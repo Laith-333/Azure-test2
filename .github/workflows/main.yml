@@ -37,4 +37,7 @@ jobs:
           --name my-container \
           --image ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }} \
           --dns-name-label my-app-${{ github.run_number }} \
-          --ports 3000
+          --ports 3000 \
+          --registry-login-server ${{ secrets.REGISTRY_LOGIN_SERVER }} \
+          --registry-username ${{ secrets.REGISTRY_USERNAME }} \
+          --registry-password ${{ secrets.REGISTRY_PASSWORD }}
