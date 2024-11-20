@@ -20,10 +20,11 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    # Step 3: Log in to Azure Container Registry (ACR)
+    # Step 3: Log in to Azure Container Registry (ACR) with a token
     - name: Log in to Azure Container Registry
       run: |
-        az acr login --name ${{ secrets.REGISTRY_NAME }}
+        TOKEN=$(az acr login --name ${{ secrets.REGISTRY_NAME }} --expose-token --query accessToken -o tsv)
+        echo $TOKEN | docker login ${{ secrets.REGISTRY_LOGIN_SERVER }} -u 00000000-0000-0000-0000-000000000000 --password-stdin
 
     # Step 4: Build and Push Docker Image to ACR
     - name: Build and push Docker image
