@@ -33,7 +33,7 @@ jobs:
     - name: 'Deploy to Azure Container Instances'
       run: |
         az container create \
-          --resource-group my-resource-group \
+          --resource-group my-actual-resource-group \ # Replace with your actual resource group name
           --name my-container \
           --image ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }} \
           --dns-name-label my-app-${{ github.run_number }} \
