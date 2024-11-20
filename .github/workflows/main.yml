@@ -17,7 +17,7 @@ jobs:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
     # Step 3: Login to Azure Container Registry
-    - name: 'Build and push image'
+    - name: 'Login to Azure Container Registry'
       uses: azure/docker-login@v1
       with:
         login-server: ${{ secrets.REGISTRY_LOGIN_SERVER }}
@@ -25,7 +25,8 @@ jobs:
         password: ${{ secrets.REGISTRY_PASSWORD }}
 
     # Step 4: Build and Push Docker Image
-    - run: |
+    - name: 'Build and Push Docker Image'
+      run: |
         docker build . -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ secrets.REPOSITORY_NAME }}:${{ github.run_number }} \
         && docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ secrets.REPOSITORY_NAME }}:${{ github.run_number }}
 
