@@ -29,7 +29,7 @@ jobs:
         docker build . -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }} \
         && docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }}
 
-    # Step 5: Deploy to Azure Container Instances
+    # Step 5: Deploy to Azure Container Instances (with storage)
     - name: 'Deploy to Azure Container Instances'
       run: |
         az container create \
@@ -40,4 +40,8 @@ jobs:
           --ports 3000 \
           --registry-login-server ${{ secrets.REGISTRY_LOGIN_SERVER }} \
           --registry-username ${{ secrets.REGISTRY_USERNAME }} \
-          --registry-password ${{ secrets.REGISTRY_PASSWORD }}
+          --registry-password ${{ secrets.REGISTRY_PASSWORD }} \
+          --azure-file-volume-share-name ${{ secrets.STORAGE_FILE_SHARE_NAME }} \
+          --azure-file-volume-account-name ${{ secrets.STORAGE_ACCOUNT_NAME }} \
+          --azure-file-volume-account-key ${{ secrets.STORAGE_ACCOUNT_KEY }} \
+          --azure-file-volume-mount-path /app/data
