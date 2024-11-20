@@ -10,20 +10,26 @@ jobs:
     - name: 'Checkout GitHub Action'
       uses: actions/checkout@v3
 
-    # Step 2: Login to Azure Container Registry
+    # Step 2: Login to Azure CLI
+    - name: 'Login to Azure CLI'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    # Step 3: Login to Azure Container Registry
     - name: 'Login to Azure Container Registry'
       run: |
         docker login ${{ secrets.REGISTRY_LOGIN_SERVER }} \
           --username ${{ secrets.REGISTRY_USERNAME }} \
           --password ${{ secrets.REGISTRY_PASSWORD }}
 
-    # Step 3: Build and Push Docker Image
+    # Step 4: Build and Push Docker Image
     - name: 'Build and Push Docker Image'
       run: |
         docker build . -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }} \
         && docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }}
 
-    # Step 4: Deploy to Azure Container Instances
+    # Step 5: Deploy to Azure Container Instances
     - name: 'Deploy to Azure Container Instances'
       run: |
         az container create \
