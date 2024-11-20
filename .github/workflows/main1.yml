@@ -68,7 +68,7 @@ jobs:
             --name my-container \
             --image ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }} \
             --dns-name-label my-app-${{ github.run_number }} \
-            --ports 5000 \  # Changed port from 3000 to 5000
+            --ports 80 \  # Changed to port 80
             --registry-login-server ${{ secrets.REGISTRY_LOGIN_SERVER }} \
             --registry-username ${{ secrets.REGISTRY_USERNAME }} \
             --registry-password ${{ secrets.REGISTRY_PASSWORD }} \
