@@ -1,46 +1,42 @@
-on: [push]
-name: Existing_Container_and_Storage_Workflow
+ame: Azure File Share Upload Workflow
+
+on:
+  push:
+    branches:
+      - main
 
 jobs:
-  build-and-upload:
+  upload-to-fileshare:
     runs-on: ubuntu-latest
-
     steps:
-      # Step 1: Checkout the repository
-      - name: 'Checkout GitHub Action'
+      # Step 1: Check out the repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      # Step 2: Login to Azure CLI
-      - name: 'Login to Azure CLI'
+      # Step 2: Log in to Azure using a Service Principal
+      - name: Log in to Azure
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Step 3: Upload Sample File to Existing Azure File Share
-      - name: 'Upload Sample File to Azure File Share'
+      # Step 3: Upload a file to the Azure File Share
+      - name: Upload File to Azure File Share
         run: |
-          # Use secrets for storage details
-          STORAGE_ACCOUNT_NAME=${{ secrets.STORAGE_ACCOUNT_NAME }}
-          FILE_SHARE_NAME=${{ secrets.FILE_SHARE_NAME }}
-          STORAGE_ACCOUNT_KEY=${{ secrets.STORAGE_ACCOUNT_KEY }}
+          # Retrieve the storage account key
+          STORAGE_KEY=$(az storage account keys list \
+            --account-name mystorageaccount1283 \
+            --query "[0].value" -o tsv)
 
-          # Create a sample file
-          echo "Sample data for Azure File Share" > sample-data.txt
+          # Install CIFS utilities (if not already installed)
+          sudo apt-get update && sudo apt-get install -y cifs-utils
 
-          # Upload the file to Azure File Share
-          az storage file upload \
-            --share-name $FILE_SHARE_NAME \
-            --source sample-data.txt \
-            --account-name $STORAGE_ACCOUNT_NAME \
-            --account-key $STORAGE_ACCOUNT_KEY
+          # Mount the file share locally
+          sudo mkdir -p /mnt/azurefileshare
+          sudo mount -t cifs //mystorageaccount1283.file.core.windows.net/myfileshare /mnt/azurefileshare \
+            -o vers=3.0,username=mystorageaccount1283,password=$STORAGE_KEY,dir_mode=0777,file_mode=0777,sec=ntlmssp
 
-      # Step 4: Link Existing Container to File Storage
-      - name: 'Link Existing Container to File Storage'
-        run: |
-          az container update \
-            --resource-group ${{ secrets.RESOURCE_GROUP }} \
-            --name ${{ secrets.CONTAINER_NAME }} \
-            --azure-file-volume-share-name ${{ secrets.FILE_SHARE_NAME }} \
-            --azure-file-volume-account-name ${{ secrets.STORAGE_ACCOUNT_NAME }} \
-            --azure-file-volume-account-key ${{ secrets.STORAGE_ACCOUNT_KEY }} \
-            --azure-file-volume-mount-path ${{ secrets.STORAGE_PATH }}
+          # Copy the file to the Azure File Share
+          sudo cp ./myfile.txt /mnt/azurefileshare/
+
+          # Unmount the file share
+          sudo umount /mnt/azurefileshare
