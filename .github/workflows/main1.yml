@@ -1,8 +1,8 @@
 on: [push]
-name: GettingStarted_Container_Workflow
+name: Existing_Container_and_Storage_Workflow
 
 jobs:
-  build-and-deploy:
+  build-and-upload:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,63 +16,31 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Step 3: Create Azure Storage Account and File Share
-      - name: 'Create Storage Account and File Share'
+      # Step 3: Upload Sample File to Existing Azure File Share
+      - name: 'Upload Sample File to Azure File Share'
         run: |
-          # Variables
-          STORAGE_ACCOUNT_NAME="mystorageaccount$RANDOM"
-          RESOURCE_GROUP="${{ secrets.RESOURCE_GROUP }}"
-          LOCATION="EastUS"
-          FILE_SHARE_NAME="myfileshare"
-          
-          # Create a new storage account
-          az storage account create \
-            --name $STORAGE_ACCOUNT_NAME \
-            --resource-group $RESOURCE_GROUP \
-            --location $LOCATION \
-            --sku Standard_LRS \
-            --kind StorageV2
+          # Use secrets for storage details
+          STORAGE_ACCOUNT_NAME=${{ secrets.STORAGE_ACCOUNT_NAME }}
+          FILE_SHARE_NAME=${{ secrets.FILE_SHARE_NAME }}
+          STORAGE_ACCOUNT_KEY=${{ secrets.STORAGE_ACCOUNT_KEY }}
 
-          # Retrieve storage account key
-          STORAGE_ACCOUNT_KEY=$(az storage account keys list --resource-group $RESOURCE_GROUP --account-name $STORAGE_ACCOUNT_NAME --query '[0].value' -o tsv)
+          # Create a sample file
+          echo "Sample data for Azure File Share" > sample-data.txt
 
-          # Create a file share
-          az storage share create \
-            --name $FILE_SHARE_NAME \
+          # Upload the file to Azure File Share
+          az storage file upload \
+            --share-name $FILE_SHARE_NAME \
+            --source sample-data.txt \
             --account-name $STORAGE_ACCOUNT_NAME \
             --account-key $STORAGE_ACCOUNT_KEY
 
-          # Set output variables for use in later steps
-          echo "STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME" >> $GITHUB_ENV
-          echo "STORAGE_ACCOUNT_KEY=$STORAGE_ACCOUNT_KEY" >> $GITHUB_ENV
-          echo "STORAGE_FILE_SHARE_NAME=$FILE_SHARE_NAME" >> $GITHUB_ENV
-
-      # Step 4: Login to Azure Container Registry
-      - name: 'Login to Azure Container Registry'
+      # Step 4: Link Existing Container to File Storage
+      - name: 'Link Existing Container to File Storage'
         run: |
-          docker login ${{ secrets.REGISTRY_LOGIN_SERVER }} \
-            --username ${{ secrets.REGISTRY_USERNAME }} \
-            --password ${{ secrets.REGISTRY_PASSWORD }}
-
-      # Step 5: Build and Push Docker Image
-      - name: 'Build and Push Docker Image'
-        run: |
-          docker build . -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }} \
-          && docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }}
-
-      # Step 6: Deploy to Azure Container Instances (with Azure File Storage)
-      - name: 'Deploy to Azure Container Instances'
-        run: |
-          az container create \
+          az container update \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
-            --name my-container \
-            --image ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }} \
-            --dns-name-label my-app-${{ github.run_number }} \
-            --ports 80 \  # Expose port 80
-            --registry-login-server ${{ secrets.REGISTRY_LOGIN_SERVER }} \
-            --registry-username ${{ secrets.REGISTRY_USERNAME }} \
-            --registry-password ${{ secrets.REGISTRY_PASSWORD }} \
-            --azure-file-volume-share-name $STORAGE_FILE_SHARE_NAME \
-            --azure-file-volume-account-name $STORAGE_ACCOUNT_NAME \
-            --azure-file-volume-account-key $STORAGE_ACCOUNT_KEY \
-            --azure-file-volume-mount-path /app/data
+            --name ${{ secrets.CONTAINER_NAME }} \
+            --azure-file-volume-share-name ${{ secrets.FILE_SHARE_NAME }} \
+            --azure-file-volume-account-name ${{ secrets.STORAGE_ACCOUNT_NAME }} \
+            --azure-file-volume-account-key ${{ secrets.STORAGE_ACCOUNT_KEY }} \
+            --azure-file-volume-mount-path ${{ secrets.STORAGE_PATH }}
