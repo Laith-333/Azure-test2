@@ -1,17 +1,17 @@
-# Use Python base image
-FROM python:3.9-slim
+# Use an official Python image
+FROM python:3.11-slim
 
 # Set the working directory
 WORKDIR /app
 
-# Copy application files
+# Copy all project files into the container
 COPY . /app
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install necessary Python dependencies
+RUN pip install --no-cache-dir flask flask-cors mysql-connector-python
 
-# Expose the application port
-EXPOSE 5000
+# Expose the port Flask will use
+EXPOSE 8080
 
-# Run the application
-CMD ["python", "main.py"]
+# Command to run the Flask application
+CMD ["python", "secure_api.py"]
