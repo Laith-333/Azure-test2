@@ -1,78 +1,122 @@
-on: [push]
-name: GettingStarted_Container_Workflow
+name: Build and Deploy to Azure Container Apps with MySQL and SQL Initialization
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  RESOURCE_GROUP: SecureAppGroup
+  LOCATION: eastus
+  ACR_NAME: secureappregistry
+  MYSQL_SERVER_NAME: secureapp-mysql
+  MYSQL_DATABASE_NAME: license_plate_api
+  MYSQL_USERNAME: Laith333
+  MYSQL_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  CONTAINER_APP_NAME: secure-container-app
+  VNET_NAME: secureapp-vnet
+  SUBNET_NAME: mysql-subnet
+  PRIVATE_DNS_ZONE: privatelink.mysql.database.azure.com
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
-      - name: 'Checkout GitHub Action'
-        uses: actions/checkout@v3
+    - name: Checkout Code
+      uses: actions/checkout@v3
 
-      # Step 2: Login to Azure CLI
-      - name: 'Login to Azure CLI'
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Log in to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Step 3: Create Azure Storage Account and File Share
-      - name: 'Create Storage Account and File Share'
-        run: |
-          # Variables
-          STORAGE_ACCOUNT_NAME="mystorageaccount$RANDOM"
-          RESOURCE_GROUP="${{ secrets.RESOURCE_GROUP }}"
-          LOCATION="EastUS"
-          FILE_SHARE_NAME="myfileshare"
-          
-          # Create a new storage account
-          az storage account create \
-            --name $STORAGE_ACCOUNT_NAME \
+    - name: Create Azure Resources
+      run: |
+        # Create Resource Group
+        az group create --name $RESOURCE_GROUP --location $LOCATION
+        
+        # Create Azure Container Registry (ACR)
+        az acr create --resource-group $RESOURCE_GROUP --name $ACR_NAME --sku Basic
+
+        # Enable Admin User for ACR
+        az acr update -n $ACR_NAME --admin-enabled true
+
+        # Create Flexible MySQL Server with Private Endpoint
+        az mysql flexible-server create \
+            --name $MYSQL_SERVER_NAME \
             --resource-group $RESOURCE_GROUP \
             --location $LOCATION \
-            --sku Standard_LRS \
-            --kind StorageV2
+            --admin-user $MYSQL_USERNAME \
+            --admin-password $MYSQL_PASSWORD \
+            --database-name $MYSQL_DATABASE_NAME \
+            --vnet-name $VNET_NAME \
+            --subnet $SUBNET_NAME \
+            --public-access Disabled
 
-          # Retrieve storage account key
-          STORAGE_ACCOUNT_KEY=$(az storage account keys list --resource-group $RESOURCE_GROUP --account-name $STORAGE_ACCOUNT_NAME --query '[0].value' -o tsv)
+        # Create Private DNS Zone
+        az network private-dns zone create --resource-group $RESOURCE_GROUP --name $PRIVATE_DNS_ZONE
 
-          # Create a file share
-          az storage share create \
-            --name $FILE_SHARE_NAME \
-            --account-name $STORAGE_ACCOUNT_NAME \
-            --account-key $STORAGE_ACCOUNT_KEY
+        # Link Private DNS Zone with Virtual Network
+        az network private-dns link vnet create \
+            --resource-group $RESOURCE_GROUP \
+            --zone-name $PRIVATE_DNS_ZONE \
+            --name PrivateDNSLink \
+            --virtual-network $VNET_NAME \
+            --registration-enabled false
 
-          # Set output variables for use in later steps
-          echo "STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME" >> $GITHUB_ENV
-          echo "STORAGE_ACCOUNT_KEY=$STORAGE_ACCOUNT_KEY" >> $GITHUB_ENV
-          echo "STORAGE_FILE_SHARE_NAME=$FILE_SHARE_NAME" >> $GITHUB_ENV
+    - name: Initialize Database with SQL Script
+      run: |
+        echo "Initializing the database with schema..."
+        # Install MySQL client
+        sudo apt-get update && sudo apt-get install -y mysql-client
+        
+        # Apply SQL schema to the database
+        mysql -h $MYSQL_SERVER_NAME.mysql.database.azure.com \
+              -u $MYSQL_USERNAME \
+              -p$MYSQL_PASSWORD \
+              --ssl-ca=/etc/ssl/certs/ca-certificates.crt \
+              $MYSQL_DATABASE_NAME < sqerry.sql
 
-      # Step 4: Login to Azure Container Registry
-      - name: 'Login to Azure Container Registry'
-        run: |
-          docker login ${{ secrets.REGISTRY_LOGIN_SERVER }} \
-            --username ${{ secrets.REGISTRY_USERNAME }} \
-            --password ${{ secrets.REGISTRY_PASSWORD }}
+    - name: Build and Push Docker Image to Azure Container Registry
+      run: |
+        # Log in to ACR
+        az acr login --name $ACR_NAME
+        
+        # Build Docker Image
+        docker build -t $ACR_NAME.azurecr.io/secure-api:latest .
+        
+        # Push Docker Image to ACR
+        docker push $ACR_NAME.azurecr.io/secure-api:latest
 
-      # Step 5: Build and Push Docker Image
-      - name: 'Build and Push Docker Image'
-        run: |
-          docker build . -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }} \
-          && docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }}
+    - name: Deploy Azure Container App
+      run: |
+        # Create Container App Environment
+        az containerapp env create \
+          --name $CONTAINER_APP_NAME-env \
+          --resource-group $RESOURCE_GROUP \
+          --location $LOCATION
 
-      # Step 6: Deploy to Azure Container Instances (with Azure File Storage)
-      - name: 'Deploy to Azure Container Instances'
-        run: |
-          az container create \
-            --resource-group ${{ secrets.RESOURCE_GROUP }} \
-            --name my-container \
-            --image ${{ secrets.REGISTRY_LOGIN_SERVER }}/my-app:${{ github.run_number }} \
-            --dns-name-label my-app-${{ github.run_number }} \
-            --ports 3000 \
-            --registry-login-server ${{ secrets.REGISTRY_LOGIN_SERVER }} \
-            --registry-username ${{ secrets.REGISTRY_USERNAME }} \
-            --registry-password ${{ secrets.REGISTRY_PASSWORD }} \
-            --azure-file-volume-share-name $STORAGE_FILE_SHARE_NAME \
-            --azure-file-volume-account-name $STORAGE_ACCOUNT_NAME \
-            --azure-file-volume-account-key $STORAGE_ACCOUNT_KEY \
-            --azure-file-volume-mount-path /app/data
+        # Deploy the Container App
+        az containerapp create \
+          --name $CONTAINER_APP_NAME \
+          --resource-group $RESOURCE_GROUP \
+          --image $ACR_NAME.azurecr.io/secure-api:latest \
+          --environment $CONTAINER_APP_NAME-env \
+          --cpu 0.5 \
+          --memory 1.0Gi \
+          --ingress external \
+          --target-port 8080 \
+          --env-vars \
+            DB_HOST=$MYSQL_SERVER_NAME.mysql.database.azure.com \
+            DB_USER=$MYSQL_USERNAME \
+            DB_PASSWORD=$MYSQL_PASSWORD \
+            DB_NAME=$MYSQL_DATABASE_NAME
+
+    - name: Output Container App URL
+      run: |
+        az containerapp show \
+          --name $CONTAINER_APP_NAME \
+          --resource-group $RESOURCE_GROUP \
+          --query "properties.configuration.ingress.fqdn" \
+          --output tsv
